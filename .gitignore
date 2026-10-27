@@ -1,0 +1,39 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local database
+data/instamart.db
+
+# Raw data: generated datasets may contain personal information
+data/raw/
+
+# Clean customer and order records
+data/clean/customers.csv
+data/clean/orders.csv
+
+# Ticket text may contain phone numbers
+data/clean/tickets.csv
