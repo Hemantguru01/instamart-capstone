@@ -1,5 +1,60 @@
+## Overview
 
-## Part B — Customer Segmentation and Lapse Prediction
+This project implements an end-to-end retail analytics and customer-support workflow. It covers data generation and cleaning, SQLite and SQL analytics, RFM customer segmentation, lapse prediction, support-ticket triage, and a policy-grounded retrieval and refund agent.
+
+## Reproduce
+
+Run commands from the repository root in an environment with the packages in `requirements.txt` installed. The project uses Python scripts and local data; the mock LLM workflows run offline.
+
+```powershell
+pip install -r requirements.txt
+python generate_data.py
+python clean_customers.py
+python clean_orders.py
+python clean_products.py
+python clean_tickets.py
+python store_data.py
+python run_sql_queries.py
+python validate_clean_data.py
+python validate_sql.py
+python pandas_analysis.py
+python build_rfm.py
+python evaluate_clusters.py
+python build_segments.py
+python build_lapse_data.py
+python train_lapse_models.py
+python balance_experiment.py
+python interpret_lapse_models.py
+python build_retention_list.py
+python ticket_triage.py
+python policy_rag.py
+python refund_agent.py
+```
+
+Some scripts depend on outputs from earlier steps. Running the workflow from the beginning regenerates local data and outputs; use the supplied input files as required by the assignment rather than modifying them.
+
+## Part A
+
+### Data cleaning and validation
+
+The data-cleaning workflow covers customers, orders, products, and support tickets. The cleaned data is stored locally and used for SQLite storage, SQL analysis, and pandas validation.
+
+### SQL and pandas analysis
+
+The SQL analysis is defined in `sql/queries.sql` and executed by `run_sql_queries.py`. `validate_clean_data.py`, `validate_sql.py`, and `pandas_analysis.py` provide validation and analysis checks.
+
+Recorded data checkpoints:
+- Raw orders: 13,084 rows.
+- Duplicate orders removed: 119.
+- Distinct orders after duplicate removal: 12,309.
+- Completed orders: 11,110.
+- Cancelled orders: 1,199.
+- Clean products: 40 rows.
+- Clean support tickets: 160 rows.
+- Completed-order revenue: INR 2,998,668.80.
+
+
+## Part B
 
 ### RFM Analysis
 
@@ -86,8 +141,7 @@ python interpret_lapse_models.py
 python build_retention_list.py
 ```
 
-### Limitations and Next Steps
-
+### Part B Limitations and Next Steps
 - The Premium retention list uses a post-hoc whole-window segment label and is illustrative, not a leakage-free evaluation.
 - Validate model stability with later time-based holdout periods before using lapse scores in production.
 - Monitor false-positive campaign costs and missed lapsing customers.
@@ -97,7 +151,7 @@ python build_retention_list.py
 
 Part A data cleaning, SQLite storage, SQL analytics, and pandas checks have been run locally. Part B segmentation, lapse modelling, class-balance experimentation, interpretation, and retention-list generation have also been run locally.
 
-### Part C — Support Ticket Triage Copilot
+## Part C
 
 **Privacy and input guardrails**
 - Redacted email addresses (55), phone numbers (91), and order IDs (132): **278 substitutions total**.
@@ -135,7 +189,7 @@ Few-shot prompting used approximately 86% more tokens per classified ticket, but
 - `mock_llm.py` was used offline; no hosted model API key or external API call was required.
 
 
-## Part D — Policy RAG Assistant and Refund Agent
+## Part D
 
 ### 1. Policy chunking and retrieval
 
@@ -215,3 +269,11 @@ ReAct calls the model repeatedly, using each tool observation to decide the next
 A plan-and-execute design could ask the model for a complete action plan once and replan only if an error occurs, potentially reducing model calls and repeated prompt tokens. However, a fixed plan may be less responsive to unexpected observations, such as an order being missing or cancelled. It must still validate every tool result before issuing a refund.
 
 For this workflow, I would choose ReAct because refund decisions depend on the order's actual status, delivery time, and calculated refund amount. Sequential tool observations allow the agent to stop or escalate based on the returned data, while iteration, token, and time limits provide safeguards against unbounded execution.
+
+## Limitations and Next Steps
+
+- The lapse model is evaluated on a single held-out split; evaluate it on later time-based holdouts before production use.
+- The Premium retention list is illustrative because its segment flag is derived from a whole-window RFM analysis that overlaps the lapse-label window.
+- Support-ticket triage results come from a deterministic mock LLM and do not establish production model performance.
+- Policy retrieval and refund-agent results depend on the supplied policy documents, mock tools, and scenario data. Add broader tests and operational monitoring before deployment.
+- Keep generated checkpoints, local databases, and other generated files tracked only when required by the assignment's Required Repository Contents list.
