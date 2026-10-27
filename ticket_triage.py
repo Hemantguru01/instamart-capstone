@@ -81,7 +81,28 @@ def validate_reply(content):
     return "", "flagged_invalid_output", ""
 
 
+
 def retry_chat(messages, ticket_id):
+    """Retry transient failures up to three times after the first attempt."""
+    recovered_errors = 0
+
+    for retry_number in range(MAX_RETRIES + 1):
+        try:
+            response = mock_llm.chat(messages)
+            return response, recovered_errors
+        except mock_llm.TransientLLMError:
+            recovered_errors += 1
+
+            if retry_number >= MAX_RETRIES:
+                raise
+
+            wait = BASE_DELAY * (2 ** retry_number) * random.uniform(0.9, 1.15)
+            print(
+                f"RETRY ticket_id={ticket_id} "
+                f"retry_number={retry_number} wait={wait:.5f}s"
+            )
+            time.sleep(wait)
+
     """Retry transient failures up to three times after the first attempt."""
     for retry_number in range(MAX_RETRIES + 1):
         try:
@@ -177,7 +198,8 @@ def run_pipeline(prompt, token_budget=None, budget_output=None):
         assert ORDER_RE.search(messages[-1]["content"]) is None
 
         try:
-            response = retry_chat(messages, ticket_id)
+            response, recovered = retry_chat(messages, ticket_id)
+            transient_errors += recovered
         except mock_llm.TransientLLMError:
             # The rubric expects every transient failure to recover.
             result["status"] = "flagged_invalid_output"
