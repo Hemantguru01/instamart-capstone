@@ -528,55 +528,6 @@ def run_resume_demo():
     return result
 
 
-def run_resume_demo():
-    with SCENARIOS_PATH.open(encoding="utf-8", newline="") as file:
-        s1 = next(
-            row for row in csv.DictReader(file)
-            if row["scenario_id"] == "S1"
-        )
-
-    run_id = f"S1_RESUME_{uuid.uuid4().hex[:8]}"
-    mock_llm.reset()
-
-    print("\n=== CRASH AND RESUME DEMO ===")
-
-    try:
-        run_agent(
-            user_message=s1["message"],
-            scenario_id="S1_RESUME",
-            run_id=run_id,
-            crash_after_tools=2,
-        )
-    except RuntimeError as exc:
-        print(exc)
-
-    checkpoint_path = STATE_DIR / f"{run_id}.json"
-    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
-    print("Tools before resume:", checkpoint["tools_executed"])
-
-    result = resume_agent(run_id)
-    all_tools = [step["tool_name"] for step in result["steps"]]
-
-    expected = [
-        "get_order",
-        "search_policy",
-        "calculate_refund",
-        "issue_refund",
-    ]
-
-    assert all_tools == expected, f"Unexpected tools: {all_tools}"
-    assert result["status"] == "REFUND", result
-    assert abs(result["steps"][-1]["observation"]["refund_inr"] - 128.25) < 0.01
-
-    print("Tools across crash and resume:", all_tools)
-    print("Final status:", result["status"])
-    print("Final answer:", result["final_answer"])
-    print("Model calls:", result["llm_calls"])
-    print("Tokens used:", result["tokens_used"])
-
-
-
-
 if __name__ == "__main__":
     print("=== SEVEN AGENT SCENARIOS ===")
     run_scenarios()
