@@ -48,4 +48,3 @@ outputs/lapse_model.joblib
 state/*.joblib
 # Ignore generated checkpoints and temporary state files
 state/*
-!state/S1_RESUME_3830c222.json
