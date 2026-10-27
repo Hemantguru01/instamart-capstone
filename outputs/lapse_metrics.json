@@ -1,0 +1,64 @@
+{
+  "baseline": {
+    "accuracy": 0.6164,
+    "precision_lapsed": 0.0,
+    "recall_lapsed": 0.0,
+    "f1_lapsed": 0.0,
+    "confusion_matrix": [
+      [
+        143,
+        0
+      ],
+      [
+        89,
+        0
+      ]
+    ]
+  },
+  "logistic_regression": {
+    "best_params": {
+      "model__C": 100
+    },
+    "best_cv_f1": 0.650552962900789,
+    "test": {
+      "accuracy": 0.7284,
+      "precision_lapsed": 0.6444,
+      "recall_lapsed": 0.6517,
+      "f1_lapsed": 0.648,
+      "confusion_matrix": [
+        [
+          111,
+          32
+        ],
+        [
+          31,
+          58
+        ]
+      ]
+    }
+  },
+  "random_forest": {
+    "best_params": {
+      "model__max_depth": 8,
+      "model__min_samples_leaf": 5
+    },
+    "best_cv_f1": 0.6836043650299913,
+    "test": {
+      "accuracy": 0.6897,
+      "precision_lapsed": 0.5895,
+      "recall_lapsed": 0.6292,
+      "f1_lapsed": 0.6087,
+      "confusion_matrix": [
+        [
+          104,
+          39
+        ],
+        [
+          33,
+          56
+        ]
+      ]
+    }
+  },
+  "selected_model": "logistic_regression"
+}

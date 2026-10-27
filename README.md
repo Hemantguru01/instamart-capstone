@@ -1,218 +1,135 @@
-# Instamart Customer Intelligence & Support Copilot
 
-An end-to-end data analytics and customer-support project built with Python, pandas, SQLite, SQL, and machine-learning tools. The project prepares Instamart data for customer intelligence, customer segmentation, support-ticket triage, and policy-grounded support automation.
+## Part B — Customer Segmentation and Lapse Prediction
 
-## Project Objectives
+### RFM Analysis
 
-- Audit and clean raw customer, product, order, and ticket datasets.
-- Store cleaned customer, product, and order data in SQLite.
-- Analyze completed-order revenue using SQL and pandas.
-- Develop customer intelligence and segmentation.
-- Build a privacy-aware support-ticket triage workflow.
-- Explore policy retrieval and tool-based support automation.
+The RFM table is generated in `outputs/rfm.csv` from completed orders before the snapshot date of 2025-10-01. It contains 1,175 customers.
 
-## Technology Stack
+The reference statistics are a median recency of 19 days, maximum recency of 180 days, mean frequency of 9.46, and mean monetary value of INR 2,552.06. The RFM definition uses whole days between the snapshot and the most recent completed order.
 
-- Python 3
-- pandas
-- NumPy
-- SQLite
-- scikit-learn
-- joblib
-- SQL
-- Git and GitHub
-- VS Code
+### Customer Segmentation
 
-## Project Structure
+The RFM columns (`recency`, `frequency`, and `monetary`) are standardised with `StandardScaler`. K-means is evaluated for K=2 through K=8 using `n_init=10` and `random_state=42`. K=4 is selected using the elbow, silhouette score, and business interpretability.
 
-```text
-instamart-capstone/
-├── data/
-│   ├── raw/
-│   ├── clean/
-│   │   ├── customers.csv
-│   │   ├── products.csv
-│   │   ├── orders.csv
-│   │   └── tickets.csv
-│   ├── policies/
-│   └── instamart.db
-├── sql/
-│   └── queries.sql
-├── state/
-├── outputs/
-├── generate_data.py
-├── mock_llm.py
-├── audit_raw.py
-├── inspect_data.py
-├── clean_customers.py
-├── clean_orders.py
-├── clean_products.py
-├── clean_tickets.py
-├── store_data.py
-├── run_sql_queries.py
-├── check_q6.py
-├── validate_sql.py
-├── pandas_analysis.py
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
+The scaled RFM matrix is also reduced to two dimensions with PCA. The explained variance ratios are approximately 0.634 and 0.218, accounting for 85.2% of the variance.
 
-## Dataset Overview
+The output `outputs/customer_segments.csv` contains:
+`customer_id`, `recency`, `frequency`, `monetary`, `segment_id`, `segment_name`, and `is_premium`.
 
-| Dataset | Raw rows | Cleaned rows |
-|---|---:|---:|
-| Customers | 1,200 | 1,200 |
-| Products | 40 | 40 |
-| Orders | 13,084 | 12,309 |
-| Tickets | 164 | 160 |
+Segment IDs are arbitrary cluster labels, not a ranking. The segment with the highest mean monetary value is marked Premium.
 
-The raw data is retained separately from the cleaned data.
+| Segment | Customers | Recommended action |
+|---|---:|---|
+| Occasional Value | 436 | Use relevant product recommendations and low-cost reminders to encourage repeat purchases. |
+| Premium High-Spend | 138 | Offer personalised service and relevant loyalty benefits. |
+| Loyal Frequent | 419 | Encourage continued engagement with convenience-focused offers rather than unnecessary discounts. |
+| At-Risk Inactive | 182 | Test a targeted win-back campaign and monitor reactivation. |
 
-## Data Cleaning
+### Lapse Prediction
 
-### Customers
+The lapse cohort includes customers with at least one completed order before 2025-09-01. The label is 1 when a customer has no completed orders from 2025-09-01 through 2025-09-30, and 0 otherwise.
 
-- Standardized city names.
-- Normalized gender values to `female`, `male`, or `unknown`.
-- Converted ages to numeric values.
-- Handled missing and invalid ages using city-level median imputation.
-- Standardized signup dates.
+The cohort contains 1,156 customers, of whom 443 (38.32%) are labelled lapsed. The stratified split contains 924 training rows and 232 test rows.
 
-### Products
+Features include pre-cutoff recency, frequency, monetary value, average discount percentage, cancellation rate, average delivery time, favourite product category, city, age, gender, and tenure.
 
-- Trimmed text fields.
-- Converted prices to numeric values.
-- Removed exact duplicate rows and duplicate product IDs.
-- Excluded records with missing required fields or non-positive prices.
+**Leakage safeguards:**
+- No order dated on or after 2025-09-01 is used to construct model features.
+- The segment labels from the whole-window RFM analysis are not model features.
+- Numeric scaling and categorical encoding are fitted within the training pipeline and applied to test rows without fitting on them.
+- No resampling is applied to validation or test rows. The class-balance experiment duplicates lapsed training rows only.
+- Model selection uses training-set cross-validation. The held-out test set is reserved for final evaluation.
 
-### Orders
+### Lapse Model Results
 
-- Removed exact duplicate rows.
-- Deduplicated order IDs, retaining the latest timestamp.
-- Converted numeric fields.
-- Reconstructed missing order amounts using product price, quantity, and discount where applicable.
-- Removed negative delivery times.
-- Imputed missing delivery times for completed orders using city-level medians.
-- Preserved missing delivery times for cancelled orders.
+The baseline always predicts "not lapsed" and achieves approximately 0.616 accuracy, with zero F1 for the lapsed class.
 
-### Tickets
+The current tuned logistic regression achieves test precision 0.6444, recall 0.6517, and F1 0.6480 for the lapsed class. The tuned random forest achieves test precision 0.5895, recall 0.6292, and F1 0.6087.
 
-- Trimmed text fields and standardized categories.
-- Removed exact duplicate rows and duplicate ticket IDs.
-- Excluded tickets with missing required identifiers, text, or categories.
-- Four blank-text tickets were excluded, leaving 160 usable tickets.
+The logistic regression is the current selected model because it achieves the higher held-out test F1 of these two fitted candidates. The selected model is saved to `outputs/lapse_model.joblib`, and the metrics are saved to `outputs/lapse_metrics.json`. Reloading the saved model reproduced the original test predictions exactly.
 
-## SQLite Database
+### Class-Balance Experiment
 
-The database is located at `data/instamart.db` and contains these tables:
+Oversampling the training data increased the minority-class training count from 354 to 570, matching the majority-class count of 570. On the unchanged test set, logistic-regression recall increased from 0.6517 to 0.8539, precision changed from 0.6444 to 0.5891, and F1 increased from 0.6480 to 0.6972.
 
-- `customers`
-- `products`
-- `orders`
+This increases the number of lapsing customers identified, at the cost of more false-positive retention targets.
 
-The current database contains 1,200 customers, 40 products, and 12,309 orders.
+### Model Interpretation
 
-## SQL Analytics
+The five most important Random Forest features in the current run are:
+1. Frequency — 0.2665
+2. Monetary value — 0.2440
+3. Recency — 0.1134
+4. Average delivery time — 0.0647
+5. Tenure — 0.0566
 
-The `sql/queries.sql` file contains seven analytical queries:
+The logistic-regression coefficients for recency, frequency, and monetary value are +0.0396, -1.6982, and +0.2846, respectively. These are conditional associations in the fitted model, not causal effects.
 
-1. Filtering with `WHERE` and `HAVING`
-2. Three-table join for revenue by city and category
-3. Scalar subquery for products above the catalogue average price
-4. `LEFT JOIN` for customers without completed orders
-5. Common table expression (CTE) for customer spending
-6. Ranking window functions for customer spend by city
-7. Running daily completed-order revenue
+### Premium Retention List
 
-## Verified Results
+The top 10 Premium customers in the held-out test set, ranked by predicted lapse probability, are written to `outputs/retention_list.csv`. Three of the 10 customers in the current list were actually labelled lapsed.
 
-The following results have been checked locally:
+**Limitation:** The Premium flag is derived from whole-window RFM, which includes the September label window. Therefore, the retention list is illustrative and is not a leakage-free evaluation. The model's own predictive features still use only information dated before 2025-09-01.
 
-- Cleaned customers: 1,200
-- Cleaned products: 40
-- Cleaned orders: 12,309
-- Usable tickets: 160
-- Completed orders: 11,110
-- Cancelled orders: 1,199
-- Completed-order revenue: INR 2,998,668.80
-- Daily revenue rows: 183
-- SQL and pandas revenue totals match.
-- The SQL validation script prints `ALL CHECKPOINTS PASSED`.
+### Reproducibility Commands
 
-### Pandas Analysis
-
-The `pandas_analysis.py` script includes:
-
-- A city-by-category revenue pivot table.
-- Per-city total spend, average order amount, and completed-order counts.
-- Order amount distribution statistics.
-- Interquartile range (IQR) outlier analysis.
-- Correlations among order amount, quantity, and discount percentage.
-
-## Setup
-
-Create and activate a virtual environment:
+Run the following from the project root after completing Part A:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+python build_rfm.py
+python evaluate_clusters.py
+python build_segments.py
+python build_lapse_data.py
+python train_lapse_models.py
+python balance_experiment.py
+python interpret_lapse_models.py
+python build_retention_list.py
 ```
 
-Install dependencies:
+### Limitations and Next Steps
 
-```powershell
-pip install -r requirements.txt
-```
-
-Generate the raw data:
-
-```powershell
-python generate_data.py
-```
-
-Run the cleaning scripts:
-
-```powershell
-python clean_customers.py
-python clean_products.py
-python clean_orders.py
-python clean_tickets.py
-```
-
-Build the SQLite database:
-
-```powershell
-python store_data.py
-```
-
-Run the SQL queries and validation:
-
-```powershell
-python run_sql_queries.py
-python validate_sql.py
-```
-
-Run the pandas analysis:
-
-```powershell
-python pandas_analysis.py
-```
+- The Premium retention list uses a post-hoc whole-window segment label and is illustrative, not a leakage-free evaluation.
+- Validate model stability with later time-based holdout periods before using lapse scores in production.
+- Monitor false-positive campaign costs and missed lapsing customers.
+- Document and evaluate support-ticket triage and policy-grounded support automation only after those workflows have been implemented and tested.
 
 ## Current Status
 
-The raw-data audit, cleaning scripts, SQLite database, seven SQL queries, and initial pandas analytics have been created and tested locally.
+Part A data cleaning, SQLite storage, SQL analytics, and pandas checks have been run locally. Part B segmentation, lapse modelling, class-balance experimentation, interpretation, and retention-list generation have also been run locally.
 
-Customer intelligence and machine-learning deliverables, support-ticket triage, and policy retrieval and agent workflows should be documented as completed only after their implementation and evaluation checks pass.
+### Part C — Support Ticket Triage Copilot
 
-## Data Privacy
+**Privacy and input guardrails**
+- Redacted email addresses (55), phone numbers (91), and order IDs (132): **278 substitutions total**.
+- No matching email, phone, or order-ID patterns remained after redaction.
+- Empty tickets were marked `skipped_empty`; tickets exceeding the 400-token estimate were marked `flagged_long`. Neither group was sent to the model.
 
-- Do not commit credentials, API keys, or secrets.
-- Avoid publishing raw ticket text or customer phone numbers.
-- Review `.gitignore` before pushing the repository.
-- Confirm whether the assignment permits committing generated data and SQLite database files before publishing them.
+**Prompt comparison**
 
-## Reproducibility
+| Metric | Zero-shot | Few-shot |
+|---|---:|---:|
+| Classified tickets | 147 | 147 |
+| Accuracy on classified tickets | 85.71% | 100% |
+| Total response usage tokens | 11,584 | 21,568 |
+| Tokens per classified ticket | 78.80 | 146.72 |
 
-Run the scripts from the project root. Keep the raw datasets unchanged and regenerate cleaned outputs through the corresponding scripts.
+Few-shot prompting used approximately 86% more tokens per classified ticket, but improved measured accuracy by 14.29 percentage points on this deterministic mock-LLM evaluation. This supports using few-shot examples when classification quality is more important than token cost. These results are specific to the supplied mock model and dataset, not a guarantee of production LLM performance.
 
+**Final few-shot results**
+- `classified_json`: 135
+- `classified_keyword`: 12
+- `flagged_invalid_output`: 9
+- `skipped_empty`: 4
+- `flagged_long`: 4
+- Final output: `outputs/triage_results.csv` (164 rows, eight required columns).
+
+**Budget demonstration**
+- The zero-shot run used a 6,000-token budget and produced 75 `budget_exhausted` tickets for human review.
+- The reported 6,029 tokens reflect the final successful response taking the cumulative usage above the threshold; the budget check prevents the next call once usage is already at or above the limit.
+- Output: `outputs/triage_budget_demo.csv`.
+
+**Routing and human review**
+- Valid classifications are routed by category and customer premium status: fraud to `security_team`, premium customers to `premium_desk`, and other valid classifications to `support_queue`.
+- Empty, long, invalid-output, and budget-exhausted cases require human review and are assigned normal priority.
+- Transient failures were retried with exponential backoff and jitter. Invalid model output was not silently accepted as a valid category.
+- `mock_llm.py` was used offline; no hosted model API key or external API call was required.

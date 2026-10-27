@@ -37,3 +37,12 @@ data/clean/orders.csv
 
 # Ticket text may contain phone numbers
 data/clean/tickets.csv
+
+# Generated model outputs and local evaluation datasets
+outputs/lapse_cohort.csv
+outputs/lapse_train_raw.csv
+outputs/lapse_test_raw.csv
+
+# Keep trained models and metrics local until submission requirements are confirmed
+outputs/lapse_model.joblib
+state/*.joblib
