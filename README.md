@@ -133,3 +133,85 @@ Few-shot prompting used approximately 86% more tokens per classified ticket, but
 - Empty, long, invalid-output, and budget-exhausted cases require human review and are assigned normal priority.
 - Transient failures were retried with exponential backoff and jitter. Invalid model output was not silently accepted as a valid category.
 - `mock_llm.py` was used offline; no hosted model API key or external API call was required.
+
+
+## Part D — Policy RAG Assistant and Refund Agent
+
+### 1. Policy chunking and retrieval
+
+The five policy documents were split into 40-word chunks with a 10-word overlap. Each chunk records its source filename.
+
+| Document | Chunks |
+|---|---:|
+| refund_policy.txt | 4 |
+| delivery_policy.txt | 3 |
+| escalation_policy.txt | 3 |
+| payment_policy.txt | 3 |
+| privacy_policy.txt | 2 |
+| **Total** | **15** |
+
+The retrieval implementation uses `TfidfVectorizer()` and cosine similarity. For the query `refund policy late delivery`, all three top-ranked chunks came from `refund_policy.txt`.
+
+**TF-IDF explanation:** Term Frequency (TF) measures how often a term occurs in a chunk, while Inverse Document Frequency (IDF) reduces the weight of terms that appear across many chunks. A limitation is that TF-IDF depends on word overlap, so different phrasings with the same meaning may not retrieve each other well.
+
+### 2. Retrieval and grounding evaluation
+
+| Evaluation | Expected-document retrieval | Expected fact present | Correct fallback |
+|---|---:|---:|---:|
+| 10-word overlap | 12/12 | 12/12 | 2/2 |
+| Zero overlap | 12/12 | 10/12 | 2/2 |
+
+With zero overlap, only 13 chunks were produced. Two answerable questions failed the exact expected-fact check:
+
+- **Late-delivery refund eligibility:** the answer included “receives a full refund of the order amount,” but omitted the exact phrase “more than 45 minutes.”
+- **Failed payment refund timing:** the answer included “returned automatically,” but omitted “48 hours.”
+
+These examples demonstrate how chunk boundaries can separate related terms and facts from the context selected by retrieval.
+
+### 3. Refund agent scenario results
+
+The agent uses five tools: `get_order`, `search_policy`, `calculate_refund`, `issue_refund`, and `escalate_to_human`. It uses the local SQLite database and `mock_llm.py`; no external model API or API key is required.
+
+| Scenario | Status | Refund amount (INR) | Model calls | Tokens used |
+|---|---|---:|---:|---:|
+| S1 | REFUND | 128.25 | 5 | 1212 |
+| S2 | REFUND | 135.00 | 5 | 1212 |
+| S3 | ESCALATE | 1999.00 | 5 | 1199 |
+| S4 | DENIED | 0.00 | 4 | 857 |
+| S5 | DENIED | 0.00 | 3 | 526 |
+| S6 | NOT_FOUND | 0.00 | 2 | 198 |
+| S7 | FALLBACK_MAX_ITERATIONS | 0.00 | 6 | 3378 |
+
+S1 and S2 received full refunds because their completed orders were delivered in more than 45 minutes. S3 was escalated because its refund exceeded INR 1000. S4 and S5 were denied, and S6 returned NOT_FOUND.
+
+S7 intentionally requests a looping tool interaction and reaches the six-model-call limit. It finishes with `FALLBACK_MAX_ITERATIONS` while remaining below the default 6000-token limit.
+
+### 4. Safety-limit demonstrations
+
+| Demonstration | Configuration | Result |
+|---|---|---|
+| S1 token-limit demo | `token_limit=200` | `FALLBACK_TOKEN_LIMIT` |
+| Timeout demo | `time_limit_seconds=0` | `FALLBACK_TIMEOUT` |
+| S7 iteration limit | `max_iterations=6`, `token_limit=6000` | `FALLBACK_MAX_ITERATIONS` |
+
+The agent checks elapsed time before each model call and checks accumulated model usage after each response. If the token limit is exceeded, it stops before executing any tool requested by that response.
+
+### 5. Crash-and-resume demonstration
+
+S1 was deliberately crashed immediately after its second tool observation. The checkpoint had already been saved.
+
+**Tools executed across the crash and resume:**
+
+`get_order` → `search_policy` → `calculate_refund` → `issue_refund`
+
+The resumed run completed with `REFUND: INR 128.25 issued.`, using five model calls and 1212 tokens across the complete run. The first two tools were not repeated. Checkpoints are stored under `state/`.
+
+Run logs are written to `outputs/agent_runs.jsonl`, and refund issuance or escalation actions are recorded in `outputs/refund_ledger.jsonl`.
+
+### 6. ReAct versus plan-and-execute
+
+ReAct calls the model repeatedly, using each tool observation to decide the next action. In these measured scenarios, S1 required five model calls and 1212 tokens, S5 required three calls and 526 tokens, and S6 required two calls and 198 tokens. This incurs repeated prompt and response costs.
+
+A plan-and-execute design could ask the model for a complete action plan once and replan only if an error occurs, potentially reducing model calls and repeated prompt tokens. However, a fixed plan may be less responsive to unexpected observations, such as an order being missing or cancelled. It must still validate every tool result before issuing a refund.
+
+For this workflow, I would choose ReAct because refund decisions depend on the order's actual status, delivery time, and calculated refund amount. Sequential tool observations allow the agent to stop or escalate based on the returned data, while iteration, token, and time limits provide safeguards against unbounded execution.
