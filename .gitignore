@@ -46,3 +46,6 @@ outputs/lapse_test_raw.csv
 # Keep trained models and metrics local until submission requirements are confirmed
 outputs/lapse_model.joblib
 state/*.joblib
+# Ignore generated checkpoints and temporary state files
+state/*
+!state/S1_RESUME_3830c222.json
