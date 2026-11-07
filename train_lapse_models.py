@@ -1,4 +1,4 @@
-
+﻿
 from pathlib import Path
 import json
 
@@ -21,15 +21,27 @@ from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "outputs"
 STATE_DIR = ROOT / "state"
 
 NUMERIC = [
-    "recency", "frequency", "monetary", "avg_discount_pct",
-    "cancellation_rate", "avg_delivery_minutes", "tenure_days", "age",
+    "recency",
+    "frequency",
+    "monetary",
+    "avg_discount_pct",
+    "cancellation_rate",
+    "avg_delivery_minutes",
+    "tenure_days",
+    "age",
 ]
-CATEGORICAL = ["city", "gender", "favourite_category"]
+
+CATEGORICAL = [
+    "city",
+    "gender",
+    "favourite_category",
+]
 
 
 def make_pipeline(model):
@@ -37,29 +49,58 @@ def make_pipeline(model):
         ("imputer", SimpleImputer(strategy="median")),
         ("scaler", StandardScaler()),
     ])
+
     categorical_pipe = Pipeline([
         ("imputer", SimpleImputer(strategy="most_frequent")),
-        ("onehot", OneHotEncoder(drop="first", handle_unknown="ignore")),
+        (
+            "onehot",
+            OneHotEncoder(
+                drop="first",
+                handle_unknown="ignore",
+            ),
+        ),
     ])
+
     prep = ColumnTransformer([
         ("num", numeric_pipe, NUMERIC),
         ("cat", categorical_pipe, CATEGORICAL),
     ])
-    return Pipeline([("prep", prep), ("model", model)])
+
+    return Pipeline([
+        ("prep", prep),
+        ("model", model),
+    ])
 
 
 def metrics(y_true, pred):
     return {
-        "accuracy": round(float(accuracy_score(y_true, pred)), 4),
-        "precision_lapsed": round(float(
-            precision_score(y_true, pred, zero_division=0)
-        ), 4),
-        "recall_lapsed": round(float(
-            recall_score(y_true, pred, zero_division=0)
-        ), 4),
-        "f1_lapsed": round(float(
-            f1_score(y_true, pred, zero_division=0)
-        ), 4),
+        "accuracy": round(
+            float(accuracy_score(y_true, pred)), 4
+        ),
+        "precision_lapsed": round(
+            float(
+                precision_score(
+                    y_true, pred, zero_division=0
+                )
+            ),
+            4,
+        ),
+        "recall_lapsed": round(
+            float(
+                recall_score(
+                    y_true, pred, zero_division=0
+                )
+            ),
+            4,
+        ),
+        "f1_lapsed": round(
+            float(
+                f1_score(
+                    y_true, pred, zero_division=0
+                )
+            ),
+            4,
+        ),
         "confusion_matrix": confusion_matrix(
             y_true, pred, labels=[0, 1]
         ).tolist(),
@@ -70,21 +111,37 @@ def main():
     OUTPUT_DIR.mkdir(exist_ok=True)
     STATE_DIR.mkdir(exist_ok=True)
 
-    data = pd.read_csv(OUTPUT_DIR / "lapse_cohort.csv")
+    data = pd.read_csv(
+        OUTPUT_DIR / "lapse_cohort.csv"
+    )
+
     X = data[NUMERIC + CATEGORICAL]
     y = data["lapsed"].astype(int)
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
+        X,
+        y,
+        test_size=0.2,
+        stratify=y,
+        random_state=42,
     )
 
-    # Required baseline: always predict not lapsed.
+    # Baseline: always predict not lapsed.
     baseline_pred = np.zeros(len(y_test), dtype=int)
+
     print("BASELINE (always not lapsed)")
-    print(json.dumps(metrics(y_test, baseline_pred), indent=2))
+    print(
+        json.dumps(
+            metrics(y_test, baseline_pred),
+            indent=2,
+        )
+    )
 
     # Logistic regression grid search.
-    log_pipe = make_pipeline(LogisticRegression(max_iter=1000))
+    log_pipe = make_pipeline(
+        LogisticRegression(max_iter=1000)
+    )
+
     log_search = GridSearchCV(
         log_pipe,
         {"model__C": [0.01, 0.1, 1, 10, 100]},
@@ -92,12 +149,17 @@ def main():
         scoring="f1",
         n_jobs=-1,
     )
+
     log_search.fit(X_train, y_train)
 
     # Random forest grid search.
     rf_pipe = make_pipeline(
-        RandomForestClassifier(n_estimators=100, random_state=42)
+        RandomForestClassifier(
+            n_estimators=100,
+            random_state=42,
+        )
     )
+
     rf_search = GridSearchCV(
         rf_pipe,
         {
@@ -108,43 +170,129 @@ def main():
         scoring="f1",
         n_jobs=-1,
     )
+
     rf_search.fit(X_train, y_train)
 
+    # Evaluate logistic regression.
     print("\nLOGISTIC REGRESSION")
     print("Best params:", log_search.best_params_)
-    print("Best CV F1:", round(log_search.best_score_, 4))
-    log_pred = log_search.best_estimator_.predict(X_test)
-    print(json.dumps(metrics(y_test, log_pred), indent=2))
-
-    print("\nRANDOM FOREST")
-    print("Best params:", rf_search.best_params_)
-    print("Best CV F1:", round(rf_search.best_score_, 4))
-    rf_pred = rf_search.best_estimator_.predict(X_test)
-    print(json.dumps(metrics(y_test, rf_pred), indent=2))
-
-    # Select the model with the higher test F1, while checking the rubric's
-    # minimum. Test metrics are used only for final comparison/selection here.
-    candidates = [
-        ("logistic_regression", log_search.best_estimator_, log_pred),
-        ("random_forest", rf_search.best_estimator_, rf_pred),
-    ]
-    selected_name, selected_model, selected_pred = max(
-        candidates, key=lambda item: f1_score(
-            y_test, item[2], zero_division=0
-        )
+    print(
+        "Best CV F1:",
+        round(float(log_search.best_score_), 4),
     )
 
-    if f1_score(y_test, selected_pred, zero_division=0) < 0.55:
-        print("\nWARNING: selected test F1 is below the required 0.55.")
+    log_pred = log_search.best_estimator_.predict(X_test)
+    log_test_metrics = metrics(y_test, log_pred)
+
+    print(json.dumps(log_test_metrics, indent=2))
+
+    # Evaluate random forest.
+    print("\nRANDOM FOREST")
+    print("Best params:", rf_search.best_params_)
+    print(
+        "Best CV F1:",
+        round(float(rf_search.best_score_), 4),
+    )
+
+    rf_pred = rf_search.best_estimator_.predict(X_test)
+    rf_test_metrics = metrics(y_test, rf_pred)
+
+    print(json.dumps(rf_test_metrics, indent=2))
+
+    # Select the model using TRAINING cross-validation F1.
+    # The held-out test set is not used for model selection.
+    candidates = [
+        (
+            "logistic_regression",
+            log_search.best_estimator_,
+            log_search.best_score_,
+        ),
+        (
+            "random_forest",
+            rf_search.best_estimator_,
+            rf_search.best_score_,
+        ),
+    ]
+
+    selected_name, selected_model, selected_cv_f1 = max(
+        candidates,
+        key=lambda item: item[2],
+    )
+
+    # Evaluate the selected model on the test set.
+    selected_pred = selected_model.predict(X_test)
+    selected_test_metrics = metrics(y_test, selected_pred)
+
+    if selected_test_metrics["f1_lapsed"] < 0.55:
+        print(
+            "\nWARNING: Selected model test F1 is "
+            "below the required 0.55."
+        )
+
+    # Save the selected model.
+    model_path = OUTPUT_DIR / "lapse_model.joblib"
+    joblib.dump(selected_model, model_path)
+
+    # Verify that the saved model reproduces predictions.
+    reloaded = joblib.load(model_path)
+    reloaded_pred = reloaded.predict(X_test)
+
+    assert np.array_equal(
+        selected_pred, reloaded_pred
+    ), "Reloaded model predictions do not match."
+
+    print("\nSelected model:", selected_name)
+    print(
+        "Selected training CV F1:",
+        round(float(selected_cv_f1), 4),
+    )
+    print("Selected model test metrics:")
+    print(json.dumps(selected_test_metrics, indent=2))
+
+    # Select the model using training cross-validation F1.
+    candidates = [
+        (
+            "logistic_regression",
+            log_search.best_estimator_,
+            log_search.best_score_,
+        ),
+        (
+            "random_forest",
+            rf_search.best_estimator_,
+            rf_search.best_score_,
+        ),
+    ]
+
+    selected_name, selected_model, selected_cv_f1 = max(
+        candidates,
+        key=lambda item: item[2],
+    )
+
+    # Evaluate the selected model on the held-out test set.
+    selected_pred = selected_model.predict(X_test)
+    selected_test_metrics = metrics(y_test, selected_pred)
+
+    if selected_test_metrics["f1_lapsed"] < 0.55:
+        print(
+            "\nWARNING: selected test F1 is below the required 0.55."
+        )
 
     model_path = OUTPUT_DIR / "lapse_model.joblib"
     joblib.dump(selected_model, model_path)
+
     reloaded = joblib.load(model_path)
     reloaded_pred = reloaded.predict(X_test)
     assert np.array_equal(selected_pred, reloaded_pred)
 
     print("\nSelected model:", selected_name)
+    print("Selected training CV F1:", round(float(selected_cv_f1), 4))
+    print("Selected model test metrics:")
+    print(json.dumps(selected_test_metrics, indent=2))
     print("Reloaded model reproduces test predictions exactly.")
+
+
+    # Save model evaluation metrics.
+
 
     metrics_out = {
         "baseline": metrics(y_test, baseline_pred),
@@ -159,12 +307,20 @@ def main():
             "test": metrics(y_test, rf_pred),
         },
         "selected_model": selected_name,
+        "selected_model_cv_f1": float(selected_cv_f1),
+        "selected_model_test": selected_test_metrics,
     }
-    with open(OUTPUT_DIR / "lapse_metrics.json", "w", encoding="utf-8") as f:
+
+
+    metrics_path = OUTPUT_DIR / "lapse_metrics.json"
+
+    with open(
+        metrics_path, "w", encoding="utf-8"
+    ) as f:
         json.dump(metrics_out, f, indent=2)
 
     print("Saved:", model_path)
-    print("Saved:", OUTPUT_DIR / "lapse_metrics.json")
+    print("Saved:", metrics_path)
 
 
 if __name__ == "__main__":

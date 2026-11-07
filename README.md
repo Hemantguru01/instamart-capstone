@@ -99,9 +99,9 @@ Features include pre-cutoff recency, frequency, monetary value, average discount
 
 The baseline always predicts "not lapsed" and achieves approximately 0.616 accuracy, with zero F1 for the lapsed class.
 
-The current tuned logistic regression achieves test precision 0.6444, recall 0.6517, and F1 0.6480 for the lapsed class. The tuned random forest achieves test precision 0.5895, recall 0.6292, and F1 0.6087.
+The tuned logistic regression achieves test precision 0.6444, recall 0.6517, and F1 0.6480 for the lapsed class. The tuned random forest achieves test precision 0.5895, recall 0.6292, and F1 0.6087.
 
-The logistic regression is the current selected model because it achieves the higher held-out test F1 of these two fitted candidates. The selected model is saved to `outputs/lapse_model.joblib`, and the metrics are saved to `outputs/lapse_metrics.json`. Reloading the saved model reproduced the original test predictions exactly.
+**Model selection:** The random forest was selected based on the higher training cross-validation F1 of 0.6836, compared with 0.6506 for logistic regression. On the held-out test set, the selected random forest achieves precision 0.5895, recall 0.6292, and F1 0.6087 for the lapsed class. The selected model is saved to `outputs/lapse_model.joblib`, and the evaluation metrics are saved to `outputs/lapse_metrics.json`. Reloading the saved model reproduces the original test predictions exactly.
 
 ### Class-Balance Experiment
 
@@ -239,6 +239,27 @@ The agent uses five tools: `get_order`, `search_policy`, `calculate_refund`, `is
 S1 and S2 received full refunds because their completed orders were delivered in more than 45 minutes. S3 was escalated because its refund exceeded INR 1000. S4 and S5 were denied, and S6 returned NOT_FOUND.
 
 S7 intentionally requests a looping tool interaction and reaches the six-model-call limit. It finishes with `FALLBACK_MAX_ITERATIONS` while remaining below the default 6000-token limit.
+
+### 3.1 Refund tool-level safety validation
+
+The refund tools independently validate each transaction before writing to the ledger.
+
+| Validation | Test result |
+|---|---|
+| Order must exist | Missing order rejected |
+| Order must be completed | Cancelled order rejected |
+| Delivery must exceed 45 minutes | Early delivery rejected |
+| Refund amount must match the order amount | Mismatched amount rejected |
+| Automatic refunds above INR 1000 | Blocked |
+| Refunds above INR 1000 | Require human escalation |
+| Escalation for amounts of INR 1000 or less | Rejected |
+
+Three valid transaction paths were also tested:
+- ORD-100048: automatic refund of INR 128.25.
+- ORD-100067: automatic refund of INR 135.00.
+- ORD-100145: escalation of INR 1999.00 for human approval.
+
+All six negative safety tests and all three valid transaction tests passed. The ledger records successful refund and escalation operations in `outputs/refund_ledger.jsonl`.
 
 ### 4. Safety-limit demonstrations
 

@@ -138,7 +138,6 @@ def main():
     ]
     for col in numeric_features:
         data[col] = pd.to_numeric(data[col], errors="coerce")
-        data[col] = data[col].fillna(data[col].median())
 
     for col in ["city", "gender", "favourite_category"]:
         data[col] = data[col].fillna("unknown").astype(str)
@@ -146,8 +145,10 @@ def main():
     feature_columns = numeric_features + [
         "city", "gender", "favourite_category"
     ]
-    assert not data[feature_columns].isna().any().any(), (
-        "Missing feature values remain"
+    categorical_features = ["city", "gender", "favourite_category"]
+
+    assert not data[categorical_features].isna().any().any(), (
+        "Missing categorical feature values remain"
     )
 
     # Fixed split, as required by the brief.

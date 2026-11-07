@@ -136,12 +136,73 @@ def _append_ledger(tool_name, order_id, refund_inr):
     return {"refund_inr": round(float(refund_inr), 2)}
 
 
+def _validate_refund_request(order_id, refund_inr):
+    """Validate refund eligibility against the authoritative database."""
+    order = get_order(order_id)
+
+    if "error" in order:
+        return None, order
+
+    if str(order["status"]).strip().lower() != "completed":
+        return None, {"error": "refund denied: order is not completed"}
+
+    if order["delivery_minutes"] is None:
+        return None, {"error": "refund denied: delivery time is unavailable"}
+
+    try:
+        delivery_minutes = float(order["delivery_minutes"])
+        amount = float(refund_inr)
+        order_amount = round(float(order["order_amount"]), 2)
+    except (TypeError, ValueError):
+        return None, {"error": "invalid refund amount or order data"}
+
+    if delivery_minutes <= 45:
+        return None, {"error": "refund denied: delivery did not exceed 45 minutes"}
+
+    if not amount > 0:
+        return None, {"error": "refund amount must be positive"}
+
+    if abs(amount - order_amount) > 0.01:
+        return None, {"error": "refund amount does not match the eligible order amount"}
+
+    return {
+        "order_id": order_id,
+        "refund_inr": round(amount, 2),
+    }, None
+
+
 def issue_refund(order_id, refund_inr):
-    return _append_ledger("issue_refund", order_id, refund_inr)
+    """Issue only eligible refunds of INR 1000 or less."""
+    validated, error = _validate_refund_request(order_id, refund_inr)
+
+    if error:
+        return error
+
+    if validated["refund_inr"] > 1000:
+        return {
+            "error": "automatic refund blocked: refunds above INR 1000 require human approval"
+        }
+
+    return _append_ledger(
+        "issue_refund", order_id, validated["refund_inr"]
+    )
 
 
 def escalate_to_human(order_id, refund_inr):
-    return _append_ledger("escalate_to_human", order_id, refund_inr)
+    """Escalate eligible refunds above INR 1000 for human approval."""
+    validated, error = _validate_refund_request(order_id, refund_inr)
+
+    if error:
+        return error
+
+    if validated["refund_inr"] <= 1000:
+        return {
+            "error": "escalation rejected: only refunds above INR 1000 require human approval"
+        }
+
+    return _append_ledger(
+        "escalate_to_human", order_id, validated["refund_inr"]
+    )
 
 
 TOOL_MAP = {
