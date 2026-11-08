@@ -1,12 +1,13 @@
 
 from pathlib import Path
 
+import json
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.linear_model import LogisticRegression
 
 from train_lapse_models import make_pipeline, NUMERIC, CATEGORICAL
-from sklearn.linear_model import LogisticRegression
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "outputs"
@@ -34,13 +35,15 @@ def main():
         X, y, test_size=0.2, stratify=y, random_state=42
     )
 
-    # Load the best C found by the earlier logistic grid search.
-    # This reuses the model choice from the required tuning stage.
-    import joblib
-    selected = joblib.load(OUTPUT_DIR / "lapse_model.joblib")
-    best_C = selected.named_steps["model"].C
+    # Retrieve Logistic Regression's tuned C from the training metrics.
+    with open(OUTPUT_DIR / "lapse_metrics.json", encoding="utf-8") as file:
+        metrics = json.load(file)
 
-    # Unbalanced baseline: same tuned logistic model.
+    best_C = metrics["logistic_regression"]["best_params"]["model__C"]
+
+    print("Using Logistic Regression C:", best_C)
+
+    # Unbalanced Logistic Regression baseline.
     unbalanced = make_pipeline(LogisticRegression(
         C=best_C, max_iter=1000
     ))
@@ -61,6 +64,7 @@ def main():
         replace=True,
         random_state=42,
     )
+
     balanced = pd.concat([train, duplicates], ignore_index=True)
 
     print("\nTraining counts before:")
@@ -75,6 +79,7 @@ def main():
         C=best_C, max_iter=1000
     ))
     balanced_model.fit(X_balanced, y_balanced)
+
     balanced_pred = balanced_model.predict(X_test)
     report("BALANCED TRAINING MODEL", y_test, balanced_pred)
 

@@ -62,24 +62,40 @@ The RFM table is generated in `outputs/rfm.csv` from completed orders before the
 
 The reference statistics are a median recency of 19 days, maximum recency of 180 days, mean frequency of 9.46, and mean monetary value of INR 2,552.06. The RFM definition uses whole days between the snapshot and the most recent completed order.
 
+
+
 ### Customer Segmentation
 
-The RFM columns (`recency`, `frequency`, and `monetary`) are standardised with `StandardScaler`. K-means is evaluated for K=2 through K=8 using `n_init=10` and `random_state=42`. K=4 is selected using the elbow, silhouette score, and business interpretability.
+The RFM columns (`recency`, `frequency`, and `monetary`) are standardised using `StandardScaler`. K-means is evaluated for K=2 through K=8 using `n_init=10` and `random_state=42`.
 
-The scaled RFM matrix is also reduced to two dimensions with PCA. The explained variance ratios are approximately 0.634 and 0.218, accounting for 85.2% of the variance.
+**K-means comparison**
 
-The output `outputs/customer_segments.csv` contains:
-`customer_id`, `recency`, `frequency`, `monetary`, `segment_id`, `segment_name`, and `is_premium`.
+| K | Inertia | Silhouette |
+|---:|---:|---:|
+| 2 | 1820.8 | 0.465 |
+| 3 | 1268.2 | 0.445 |
+| 4 | 743.1 | 0.526 |
+| 5 | 617.4 | 0.480 |
+| 6 | 503.2 | 0.482 |
+| 7 | 408.5 | 0.416 |
+| 8 | 366.5 | 0.412 |
+
+K=4 was selected based on the highest silhouette score, the elbow pattern, and business interpretability.
+
+The scaled RFM matrix is also reduced to two dimensions with PCA. The explained variance ratios are 0.634 and 0.218, accounting for 85.2% of the variance.
+
+The output `outputs/customer_segments.csv` contains `customer_id`, `recency`, `frequency`, `monetary`, `segment_id`, `segment_name`, and `is_premium`.
+
+**Segment profiles**
+
+| Segment | Customers | Mean recency | Mean frequency | Mean monetary (INR) | Recommended action |
+|---|---:|---:|---:|---:|---|
+| Occasional Value | 436 | 28.86 | 3.77 | 1,057.62 | Use relevant product recommendations and low-cost reminders to encourage repeat purchases. |
+| Premium High-Spend | 138 | 24.12 | 6.77 | 7,129.70 | Offer personalised service and relevant loyalty benefits. |
+| Loyal Frequent | 419 | 8.77 | 19.40 | 3,410.02 | Encourage continued engagement with convenience-focused offers rather than unnecessary discounts. |
+| At-Risk Inactive | 182 | 109.04 | 2.20 | 685.99 | Test a targeted win-back campaign and monitor reactivation. |
 
 Segment IDs are arbitrary cluster labels, not a ranking. The segment with the highest mean monetary value is marked Premium.
-
-| Segment | Customers | Recommended action |
-|---|---:|---|
-| Occasional Value | 436 | Use relevant product recommendations and low-cost reminders to encourage repeat purchases. |
-| Premium High-Spend | 138 | Offer personalised service and relevant loyalty benefits. |
-| Loyal Frequent | 419 | Encourage continued engagement with convenience-focused offers rather than unnecessary discounts. |
-| At-Risk Inactive | 182 | Test a targeted win-back campaign and monitor reactivation. |
-
 ### Lapse Prediction
 
 The lapse cohort includes customers with at least one completed order before 2025-09-01. The label is 1 when a customer has no completed orders from 2025-09-01 through 2025-09-30, and 0 otherwise.
@@ -178,9 +194,18 @@ Few-shot prompting used approximately 86% more tokens per classified ticket, but
 - Final output: `outputs/triage_results.csv` (164 rows, eight required columns).
 
 **Budget demonstration**
-- The zero-shot run used a 6,000-token budget and produced 75 `budget_exhausted` tickets for human review.
-- The reported 6,029 tokens reflect the final successful response taking the cumulative usage above the threshold; the budget check prevents the next call once usage is already at or above the limit.
+
+- Configured token budget: **6,000 tokens**.
+- Actual recorded usage: **5,951 tokens**.
+- Unused budget: **49 tokens**.
+- `classified_json`: 70 tickets.
+- `classified_keyword`: 6 tickets.
+- `budget_exhausted`: 76 tickets routed for human review.
+- Accuracy on the 76 classified tickets: **84.21%**.
+- The pipeline's budget assertion passed, and the regenerated CSV total matches the pipeline summary.
 - Output: `outputs/triage_budget_demo.csv`.
+
+The experiment uses the deterministic offline `mock_llm.py` implementation. Token usage and accuracy are specific to this mock model and dataset; they should not be interpreted as production API cost or performance guarantees.
 
 **Routing and human review**
 - Valid classifications are routed by category and customer premium status: fraud to `security_team`, premium customers to `premium_desk`, and other valid classifications to `support_queue`.
@@ -259,7 +284,7 @@ Three valid transaction paths were also tested:
 - ORD-100067: automatic refund of INR 135.00.
 - ORD-100145: escalation of INR 1999.00 for human approval.
 
-All six negative safety tests and all three valid transaction tests passed. The ledger records successful refund and escalation operations in `outputs/refund_ledger.jsonl`.
+All six negative safety tests and all three valid transaction tests passed. Successful automatic refunds and escalation requests are recorded in `outputs/refund_ledger.jsonl`. An escalation request is sent for human approval; the agent does not automatically issue refunds above INR 1000.
 
 ### 4. Safety-limit demonstrations
 

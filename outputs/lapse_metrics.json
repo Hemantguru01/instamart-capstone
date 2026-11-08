@@ -60,5 +60,22 @@
       ]
     }
   },
-  "selected_model": "logistic_regression"
+  "selected_model": "random_forest",
+  "selected_model_cv_f1": 0.6836043650299913,
+  "selected_model_test": {
+    "accuracy": 0.6897,
+    "precision_lapsed": 0.5895,
+    "recall_lapsed": 0.6292,
+    "f1_lapsed": 0.6087,
+    "confusion_matrix": [
+      [
+        104,
+        39
+      ],
+      [
+        33,
+        56
+      ]
+    ]
+  }
 }

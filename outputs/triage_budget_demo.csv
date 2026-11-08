@@ -82,7 +82,7 @@ T0109,C1080,billing,classified_json,billing,keyword match,74,zero_shot
 T0046,C0442,delivery,classified_keyword,delivery,,80,zero_shot
 T0081,C0559,billing,classified_json,billing,keyword match,74,zero_shot
 T0007,C0682,technical,classified_json,technical,keyword match,65,zero_shot
-T0068,C0208,fraud,classified_json,billing,keyword match,78,zero_shot
+T0068,C0208,fraud,budget_exhausted,,,0,zero_shot
 T0085,C0031,billing,budget_exhausted,,,0,zero_shot
 T0075,C0901,technical,budget_exhausted,,,0,zero_shot
 T0052,C1005,fraud,budget_exhausted,,,0,zero_shot

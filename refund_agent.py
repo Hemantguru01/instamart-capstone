@@ -244,8 +244,15 @@ def _tool_call_data(tool_call):
     return call_id, name, arguments
 
 
-def _write_checkpoint(run_id, scenario_id, messages, tokens_used,
-                      steps, tools_executed, llm_calls):
+def _write_checkpoint(
+    run_id,
+    scenario_id,
+    messages,
+    tokens_used,
+    steps,
+    tools_executed,
+    llm_calls,
+):
     checkpoint = {
         "run_id": run_id,
         "scenario_id": scenario_id,
@@ -259,8 +266,8 @@ def _write_checkpoint(run_id, scenario_id, messages, tokens_used,
 
     path = STATE_DIR / f"{run_id}.json"
     path.write_text(
-    json.dumps(checkpoint, indent=2, default=_json_default),
-    encoding="utf-8",
+        json.dumps(checkpoint, indent=2, default=_json_default),
+        encoding="utf-8",
     )
 
 
@@ -487,10 +494,15 @@ def run_scenarios():
     for row in scenarios:
         mock_llm.reset()
 
+        # Measure the complete run_agent call for this scenario.
+        started = time.monotonic()
+
         result = run_agent(
             user_message=row["message"],
             scenario_id=row["scenario_id"],
         )
+
+        elapsed_seconds = round(time.monotonic() - started, 4)
 
         expected_status = row["expected_outcome"]
         expected_refund = float(row["expected_refund_inr"])
@@ -506,11 +518,13 @@ def run_scenarios():
             "final_answer": result["final_answer"],
             "llm_calls": result["llm_calls"],
             "tokens_used": result["tokens_used"],
+            "elapsed_seconds": elapsed_seconds,
             "steps": result["steps"],
         }
 
         with RUNS_PATH.open("a", encoding="utf-8") as file:
             file.write(json.dumps(record, default=_json_default) + "\n")
+            file.flush()
 
         print(
             f"{row['scenario_id']}: status={result['status']}, "
@@ -518,7 +532,8 @@ def run_scenarios():
             f"expected_status={expected_status}, "
             f"expected_refund={expected_refund:.2f}, "
             f"calls={result['llm_calls']}, "
-            f"tokens={result['tokens_used']}"
+            f"tokens={result['tokens_used']}, "
+            f"elapsed={elapsed_seconds:.4f}s"
         )
 
         all_results.append({
@@ -526,9 +541,11 @@ def run_scenarios():
             "expected_status": expected_status,
             "expected_refund": expected_refund,
             "actual_refund": actual_refund,
+            "elapsed_seconds": elapsed_seconds,
         })
 
     return all_results
+
 
 def run_resume_demo():
     """Crash after tool 2, resume, and verify no tool is repeated."""
@@ -578,7 +595,9 @@ def run_resume_demo():
         f"Unexpected tool sequence: {all_tools}"
     )
     assert result["status"] == "REFUND", result
-    assert abs(128.25 - result["steps"][-1]["observation"]["refund_inr"]) < 0.01
+    assert abs(
+        128.25 - result["steps"][-1]["observation"]["refund_inr"]
+    ) < 0.01
 
     print("Tools across crash and resume:", all_tools)
     print("Final status:", result["status"])
@@ -589,6 +608,10 @@ def run_resume_demo():
     return result
 
 
+# ---------------------------------------------------------------------
+# Main execution
+# ---------------------------------------------------------------------
+
 if __name__ == "__main__":
     print("=== SEVEN AGENT SCENARIOS ===")
     run_scenarios()
@@ -596,8 +619,10 @@ if __name__ == "__main__":
     print("\n=== TOKEN LIMIT DEMO: S1 ===")
     mock_llm.reset()
     with SCENARIOS_PATH.open(encoding="utf-8", newline="") as file:
-        s1 = next(row for row in csv.DictReader(file)
-                  if row["scenario_id"] == "S1")
+        s1 = next(
+            row for row in csv.DictReader(file)
+            if row["scenario_id"] == "S1"
+        )
 
     token_demo = run_agent(
         s1["message"],
@@ -614,4 +639,5 @@ if __name__ == "__main__":
         time_limit_seconds=0,
     )
     print(timeout_demo["status"], timeout_demo["final_answer"])
+
     run_resume_demo()
